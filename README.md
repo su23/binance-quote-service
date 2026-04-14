@@ -22,11 +22,11 @@ Binance Spot                          │                                  │
                                                         FastAPI REST API
 ```
 
-- **WebSocket client** connects to Binance combined bookTicker stream with auto-reconnect and exponential backoff
+- At startup, the top 10 instruments are **automatically discovered** from Binance's [`complianceSymbolList`](https://www.binance.com/bapi/apex/v1/friendly/apex/marketing/complianceSymbolList) endpoint, ranked by actual **market capitalization** (circulating supply × price). One pair per base asset is selected (highest market cap entry wins), and the top 20 are logged for visibility.
+- For each selected instrument, the service checks whether a **USD-M Futures perpetual** exists. If so, quotes are streamed from the **Futures** WebSocket (which includes event timestamps); otherwise, the **Spot** WebSocket is used. Both streams update the same store.
 - **In-memory dict** stores the latest quote per symbol for O(1) reads
 - **SQLite (WAL mode)** persists all quotes with batched writes for I/O efficiency
 - **FastAPI** serves the REST API with auto-generated OpenAPI docs
-- At startup, the top 10 instruments are **automatically discovered** from the Binance market data API, ranked by market capitalization (circulating supply × price)
 
 ### Performance
 
