@@ -71,7 +71,8 @@ class QuoteStore:
         # to interleave, even if an await were somehow added nearby.
         to_write, self._buffer = self._buffer, []
 
-        assert self._db is not None
+        if self._db is None:
+            raise RuntimeError("QuoteStore.init_db() must be called before use")
         await self._db.executemany(
             _INSERT,
             ((q.symbol, q.bid_price, q.bid_size, q.ask_price, q.ask_size, q.event_time)
@@ -90,7 +91,8 @@ class QuoteStore:
         self, symbol: str, limit: int = 100
     ) -> Sequence[dict]:
         """Fetch recent quotes from SQLite for a symbol."""
-        assert self._db is not None
+        if self._db is None:
+            raise RuntimeError("QuoteStore.init_db() must be called before use")
         cursor = await self._db.execute(
             "SELECT symbol, bid_price, bid_size, ask_price, ask_size, event_time_ms "
             "FROM quotes WHERE symbol = ? ORDER BY event_time_ms DESC LIMIT ?",
