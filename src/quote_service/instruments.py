@@ -118,8 +118,13 @@ async def fetch_top_instruments(
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
+    display = max(n, 20)
+    logger.info("Top %d instruments by estimated market cap (selecting %d):", display, n)
+    for i, (sym, score) in enumerate(scored[:display], 1):
+        marker = " *" if i <= n else ""
+        logger.info("  %2d. %-15s score=%.3e%s", i, sym, score, marker)
+
     top = [sym for sym, _score in scored[:n]]
-    logger.info("Top %d instruments by estimated market cap: %s", n, ", ".join(top))
     return top
 
 
