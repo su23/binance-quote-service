@@ -84,9 +84,7 @@ class QuoteStore:
         return self._latest.get(symbol.upper())
 
     def get_all_latest(self) -> dict[str, Quote]:
-        # Safe to return directly: single-threaded event loop, dict can't
-        # mutate during a synchronous iteration in the caller.
-        return self._latest
+        return dict(self._latest)
 
     async def get_history(
         self, symbol: str, limit: int = 100
