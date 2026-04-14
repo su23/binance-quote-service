@@ -15,9 +15,11 @@ from .ws_client import BinanceWSClient
 
 logger = logging.getLogger(__name__)
 
+_SENTINEL = object()
+
 
 async def process_quotes(
-    queue: asyncio.Queue[Quote],
+    queue: asyncio.Queue[Quote | object],
     store: QuoteStore,
     batch_interval_s: float,
 ) -> None:
@@ -33,8 +35,10 @@ async def process_quotes(
     flush_task = asyncio.create_task(_flusher())
     try:
         while True:
-            quote = await queue.get()
-            store.update(quote)
+            item = await queue.get()
+            if item is _SENTINEL:
+                break
+            store.update(item)  # type: ignore[arg-type]
     finally:
         flush_task.cancel()
         await store.flush()
@@ -68,7 +72,7 @@ async def run(settings: Settings | None = None) -> None:
     store = QuoteStore(db_path=settings.db_path, batch_size=settings.batch_size)
     await store.init_db()
 
-    queue: asyncio.Queue[Quote] = asyncio.Queue(maxsize=10_000)
+    queue: asyncio.Queue[Quote | object] = asyncio.Queue(maxsize=10_000)
     ws_client = BinanceWSClient(settings, queue)
 
     app = create_app(store)
@@ -80,14 +84,20 @@ async def run(settings: Settings | None = None) -> None:
         loop="none",
     )
     server = uvicorn.Server(uvi_config)
+    # Prevent uvicorn from installing its own signal handlers (we handle it)
+    server.install_signal_handlers = lambda: None
 
     loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
+    shutdown_called = False
 
     def _shutdown() -> None:
+        nonlocal shutdown_called
+        if shutdown_called:
+            return
+        shutdown_called = True
         logger.info("Shutdown signal received")
         ws_client.stop()
-        stop_event.set()
+        queue.put_nowait(_SENTINEL)
         server.should_exit = True
 
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -100,7 +110,7 @@ async def run(settings: Settings | None = None) -> None:
             tg.create_task(ws_client.run())
             tg.create_task(process_quotes(queue, store, batch_interval_s))
             tg.create_task(server.serve())
-    except* KeyboardInterrupt:
+    except* (KeyboardInterrupt, SystemExit):
         pass
     finally:
         await store.close()
