@@ -14,7 +14,7 @@ FALLBACK_SYMBOLS: list[str] = [
 ]
 
 BINANCE_FUTURES_WS = "wss://fstream.binance.com"
-BINANCE_FUTURES_REST = "https://fapi.binance.com"
+BINANCE_SPOT_REST = "https://api.binance.com"
 
 
 class Settings(BaseSettings):
@@ -28,4 +28,4 @@ class Settings(BaseSettings):
     batch_size: int = 50
     batch_interval_ms: int = 100
     ws_url: str = BINANCE_FUTURES_WS
-    rest_url: str = BINANCE_FUTURES_REST
+    rest_url: str = BINANCE_SPOT_REST

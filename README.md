@@ -23,7 +23,7 @@ Binance USD-M Futures        websockets            orjson.loads
 - **In-memory dict** stores the latest quote per symbol for O(1) reads
 - **SQLite (WAL mode)** persists all quotes with batched writes for I/O efficiency
 - **FastAPI** serves the REST API with auto-generated OpenAPI docs
-- At startup, the top 10 instruments are **automatically discovered** from Binance by 24h trading volume
+- At startup, the top 10 instruments are **automatically discovered** from the Binance Spot API, ranked by `quoteVolume × lastPrice` as an estimated market cap proxy (spot volumes avoid leverage inflation)
 
 ### Performance
 
@@ -100,7 +100,7 @@ All settings are configured via environment variables with the `QS_` prefix:
 | `QS_BATCH_SIZE` | `50` | Max quotes per DB batch write |
 | `QS_BATCH_INTERVAL_MS` | `100` | DB flush interval in milliseconds |
 | `QS_WS_URL` | `wss://fstream.binance.com` | Binance WebSocket URL |
-| `QS_REST_URL` | `https://fapi.binance.com` | Binance REST API URL (for instrument discovery) |
+| `QS_REST_URL` | `https://api.binance.com` | Binance Spot REST API URL (for instrument discovery) |
 
 ## Test
 
