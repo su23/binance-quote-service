@@ -38,7 +38,7 @@ class TestFlushLoop:
     @pytest.mark.asyncio
     async def test_continues_after_flush_error(self, tmp_path):
         """flush_loop must survive a failing flush() and keep running."""
-        store = QuoteStore(db_path=str(tmp_path / "err.db"), batch_size=10)
+        store = QuoteStore(db_path=str(tmp_path / "err.db"))
         await store.init_db()
 
         call_count = 0
@@ -90,7 +90,7 @@ class TestEndToEnd:
                 batch_interval_ms=50,
             )
 
-            store = QuoteStore(db_path=settings.db_path, batch_size=10)
+            store = QuoteStore(db_path=settings.db_path)
             await store.init_db()
 
             ws_client = BinanceWSClient(settings.symbols, settings.spot_ws_url, store)

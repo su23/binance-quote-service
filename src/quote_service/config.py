@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     db_path: str = "quotes.db"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    batch_size: int = 50
     batch_interval_ms: int = 100
     spot_ws_url: str = BINANCE_SPOT_WS
     futures_ws_url: str = BINANCE_FUTURES_WS

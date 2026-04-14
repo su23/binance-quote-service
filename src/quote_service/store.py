@@ -36,9 +36,8 @@ VALUES (?, ?, ?, ?, ?, ?);
 class QuoteStore:
     """In-memory latest quotes + SQLite persistence with batched writes."""
 
-    def __init__(self, db_path: str = "quotes.db", batch_size: int = 50) -> None:
+    def __init__(self, db_path: str = "quotes.db") -> None:
         self._db_path = db_path
-        self._batch_size = batch_size
         self._latest: dict[str, Quote] = {}
         self._buffer: list[Quote] = []
         self._db: aiosqlite.Connection | None = None

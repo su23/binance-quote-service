@@ -98,13 +98,13 @@ class TestSQLitePersistence:
     @pytest.mark.asyncio
     async def test_close_flushes_remaining(self, tmp_path):
         db_path = str(tmp_path / "close_test.db")
-        s = QuoteStore(db_path=db_path, batch_size=10)
+        s = QuoteStore(db_path=db_path)
         await s.init_db()
         s.update(_quote())
         await s.close()
 
         # Reopen and verify data was flushed
-        s2 = QuoteStore(db_path=db_path, batch_size=10)
+        s2 = QuoteStore(db_path=db_path)
         await s2.init_db()
         history = await s2.get_history("BTCUSDT")
         assert len(history) == 1

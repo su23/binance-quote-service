@@ -11,7 +11,7 @@ from quote_service.store import QuoteStore
 async def store(tmp_path):
     """QuoteStore backed by a temporary SQLite database."""
     db_path = str(tmp_path / "test.db")
-    s = QuoteStore(db_path=db_path, batch_size=10)
+    s = QuoteStore(db_path=db_path)
     await s.init_db()
     yield s
     await s.close()

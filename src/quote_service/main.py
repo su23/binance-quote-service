@@ -78,7 +78,7 @@ async def run(settings: Settings | None = None) -> None:
     if spot_symbols:
         logger.info("  Spot    (%d): %s", len(spot_symbols), ", ".join(spot_symbols))
 
-    store = QuoteStore(db_path=settings.db_path, batch_size=settings.batch_size)
+    store = QuoteStore(db_path=settings.db_path)
     await store.init_db()
 
     ws_clients: list[BinanceWSClient] = []

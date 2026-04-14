@@ -4,7 +4,9 @@
 
 Real-time streaming quote service for the top 10 Binance instruments by market capitalization.
 
-Connects to Binance WebSocket APIs (USD-M Futures where available, Spot for the rest), streams best bid/ask (bookTicker) data, persists quotes to SQLite, and serves the latest quotes via a REST API.
+A **quote** is the current best bid/ask snapshot for an instrument: `bid_price`, `bid_size`, `ask_price`, `ask_size`.
+
+Connects to Binance WebSocket APIs (USD-M Futures where available, Spot for the rest), streams bookTicker data, persists quotes to SQLite, and serves the latest quotes via a REST API.
 
 ## Architecture
 
@@ -81,6 +83,26 @@ QS_SYMBOLS='["BTCUSDT","ETHUSDT","SOLUSDT"]' quote-service
 
 The REST API starts on `http://0.0.0.0:8000` by default.
 
+### Example startup output
+
+```
+Top 20 instruments by market cap (selecting 10):
+   1. BTCUSDT      mcap=$1.49e+12 *
+   2. ETHUSDT      mcap=$2.86e+11 *
+   3. USDTUSD      mcap=$1.85e+11 *
+   4. XRPUSDT      mcap=$8.41e+10 *
+   5. BNBUSDT      mcap=$8.40e+10 *
+   6. USDCUSDT     mcap=$7.87e+10 *
+   7. SOLUSDT      mcap=$4.94e+10 *
+   8. TRXUSDT      mcap=$3.21e+10 *
+   9. DOGEUSDT     mcap=$1.45e+10 *
+  10. ADAUSDT      mcap=$8.79e+09 *
+  ...
+Starting Binance Quote Service for 10 symbols: BTCUSDT, ETHUSDT, ...
+  Futures (7): BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, SOLUSDT, TRXUSDT, DOGEUSDT
+  Spot    (3): USDTUSD, USDCUSDT, ADAUSDT
+```
+
 ## API Endpoints
 
 | Endpoint | Description |
@@ -115,7 +137,6 @@ All settings are configured via environment variables with the `QS_` prefix:
 | `QS_DB_PATH` | `quotes.db` | SQLite database file path |
 | `QS_API_HOST` | `0.0.0.0` | API server host |
 | `QS_API_PORT` | `8000` | API server port |
-| `QS_BATCH_SIZE` | `50` | Max quotes per DB batch write |
 | `QS_BATCH_INTERVAL_MS` | `100` | DB flush interval in milliseconds |
 | `QS_SPOT_WS_URL` | `wss://stream.binance.com:9443` | Binance Spot WebSocket URL |
 | `QS_FUTURES_WS_URL` | `wss://fstream.binance.com` | Binance USD-M Futures WebSocket URL |
