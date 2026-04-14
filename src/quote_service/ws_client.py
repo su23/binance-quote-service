@@ -25,6 +25,7 @@ class BinanceWSClient:
         self._settings = settings
         self._store = store
         self._running = False
+        self._ws: websockets.asyncio.client.ClientConnection | None = None
         streams = "/".join(
             f"{s.lower()}@bookTicker" for s in settings.symbols
         )
@@ -69,6 +70,7 @@ class BinanceWSClient:
             ping_timeout=60,
             close_timeout=5,
         ) as ws:
+            self._ws = ws
             logger.info("Connected. Streaming bookTicker for %d symbols.", len(self._settings.symbols))
             async for raw in ws:
                 if not self._running:
@@ -84,7 +86,11 @@ class BinanceWSClient:
                     continue
                 self._store.update(quote)
                 received += 1
+        self._ws = None
         return received
 
     def stop(self) -> None:
         self._running = False
+        if self._ws is not None:
+            self._ws.close_timeout = 1
+            asyncio.ensure_future(self._ws.close())
