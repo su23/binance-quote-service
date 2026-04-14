@@ -58,12 +58,12 @@ class TestWSClient:
             port = server.sockets[0].getsockname()[1]
             settings = Settings(
                 symbols=["BTCUSDT"],
-                ws_url=f"ws://127.0.0.1:{port}",
+                spot_ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "test.db"),
             )
             store = QuoteStore(db_path=settings.db_path)
             await store.init_db()
-            client = BinanceWSClient(settings, store)
+            client = BinanceWSClient(settings.symbols, settings.spot_ws_url, store)
 
             task = asyncio.create_task(client.run())
             try:
@@ -98,12 +98,12 @@ class TestWSClient:
             port = server.sockets[0].getsockname()[1]
             settings = Settings(
                 symbols=["BTCUSDT"],
-                ws_url=f"ws://127.0.0.1:{port}",
+                spot_ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "test.db"),
             )
             store = QuoteStore(db_path=settings.db_path)
             await store.init_db()
-            client = BinanceWSClient(settings, store)
+            client = BinanceWSClient(settings.symbols, settings.spot_ws_url, store)
 
             task = asyncio.create_task(client.run())
             try:
@@ -140,12 +140,12 @@ class TestWSClient:
             port = server.sockets[0].getsockname()[1]
             settings = Settings(
                 symbols=["BTCUSDT"],
-                ws_url=f"ws://127.0.0.1:{port}",
+                spot_ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "test.db"),
             )
             store = QuoteStore(db_path=settings.db_path)
             await store.init_db()
-            client = BinanceWSClient(settings, store)
+            client = BinanceWSClient(settings.symbols, settings.spot_ws_url, store)
 
             task = asyncio.create_task(client.run())
             try:
@@ -165,13 +165,8 @@ class TestWSClient:
     @pytest.mark.asyncio
     async def test_url_construction(self, tmp_path):
         """Verify the combined stream URL is built correctly."""
-        settings = Settings(
-            symbols=["BTCUSDT", "ETHUSDT"],
-            ws_url="wss://fstream.binance.com",
-            db_path=str(tmp_path / "test.db"),
-        )
-        store = QuoteStore(db_path=settings.db_path)
-        client = BinanceWSClient(settings, store)
+        store = QuoteStore(db_path=str(tmp_path / "test.db"))
+        client = BinanceWSClient(["BTCUSDT", "ETHUSDT"], "wss://fstream.binance.com", store)
         assert "btcusdt@bookTicker" in client._url
         assert "ethusdt@bookTicker" in client._url
         assert "/stream?streams=" in client._url

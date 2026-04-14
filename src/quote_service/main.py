@@ -8,7 +8,7 @@ import uvicorn
 
 from .api import create_app
 from .config import FALLBACK_SYMBOLS, Settings
-from .instruments import fetch_top_instruments
+from .instruments import fetch_futures_symbols, fetch_top_instruments
 from .store import QuoteStore
 from .ws_client import BinanceWSClient
 
@@ -46,16 +46,46 @@ async def run(settings: Settings | None = None) -> None:
             )
             settings.symbols = FALLBACK_SYMBOLS[: settings.num_instruments]
 
+    # Split symbols: futures for those with perpetuals, spot for the rest.
+    try:
+        futures_available = await fetch_futures_symbols(
+            base_url=settings.futures_rest_url + "/fapi/v1/exchangeInfo",
+        )
+    except Exception as exc:
+        logger.warning("Failed to fetch futures symbols (%s), using spot for all", exc)
+        futures_available = set()
+
+    futures_symbols = [s for s in settings.symbols if s in futures_available]
+    spot_symbols = [s for s in settings.symbols if s not in futures_available]
+
     logger.info(
         "Starting Binance Quote Service for %d symbols: %s",
         len(settings.symbols),
         ", ".join(settings.symbols),
     )
+    if futures_symbols:
+        logger.info("  Futures (%d): %s", len(futures_symbols), ", ".join(futures_symbols))
+    if spot_symbols:
+        logger.info("  Spot    (%d): %s", len(spot_symbols), ", ".join(spot_symbols))
 
     store = QuoteStore(db_path=settings.db_path, batch_size=settings.batch_size)
     await store.init_db()
 
-    ws_client = BinanceWSClient(settings, store)
+    ws_clients: list[BinanceWSClient] = []
+    if futures_symbols:
+        ws_clients.append(BinanceWSClient(
+            symbols=futures_symbols,
+            ws_url=settings.futures_ws_url,
+            store=store,
+            label="futures",
+        ))
+    if spot_symbols:
+        ws_clients.append(BinanceWSClient(
+            symbols=spot_symbols,
+            ws_url=settings.spot_ws_url,
+            store=store,
+            label="spot",
+        ))
 
     app = create_app(store)
     uvi_config = uvicorn.Config(
@@ -66,7 +96,6 @@ async def run(settings: Settings | None = None) -> None:
         loop="none",
     )
     server = uvicorn.Server(uvi_config)
-    # Prevent uvicorn from installing its own signal handlers (we handle it)
     server.install_signal_handlers = lambda: None
 
     loop = asyncio.get_running_loop()
@@ -76,7 +105,8 @@ async def run(settings: Settings | None = None) -> None:
         if stop_event.is_set():
             return
         logger.info("Shutdown signal received")
-        ws_client.stop()
+        for client in ws_clients:
+            client.stop()
         server.should_exit = True
         stop_event.set()
 
@@ -87,7 +117,8 @@ async def run(settings: Settings | None = None) -> None:
 
     try:
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(ws_client.run())
+            for client in ws_clients:
+                tg.create_task(client.run())
             tg.create_task(flush_loop(store, batch_interval_s, stop_event))
             tg.create_task(server.serve())
     except* (KeyboardInterrupt, SystemExit):

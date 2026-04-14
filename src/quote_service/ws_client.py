@@ -9,7 +9,6 @@ import orjson
 import websockets
 import websockets.asyncio.client
 
-from .config import Settings
 from .models import parse_book_ticker
 from .store import QuoteStore
 
@@ -21,15 +20,22 @@ MAX_RECONNECT_DELAY = 30.0
 class BinanceWSClient:
     """Connects to Binance combined bookTicker stream and updates the store directly."""
 
-    def __init__(self, settings: Settings, store: QuoteStore) -> None:
-        self._settings = settings
+    def __init__(
+        self,
+        symbols: list[str],
+        ws_url: str,
+        store: QuoteStore,
+        label: str = "",
+    ) -> None:
+        self._symbols = symbols
         self._store = store
         self._running = False
+        self._label = label or ws_url
         self._ws: websockets.asyncio.client.ClientConnection | None = None
         streams = "/".join(
-            f"{s.lower()}@bookTicker" for s in settings.symbols
+            f"{s.lower()}@bookTicker" for s in symbols
         )
-        self._url = f"{settings.ws_url}/stream?streams={streams}"
+        self._url = f"{ws_url}/stream?streams={streams}"
 
     async def run(self) -> None:
         """Run the WebSocket listener with auto-reconnect."""
@@ -71,7 +77,7 @@ class BinanceWSClient:
             close_timeout=5,
         ) as ws:
             self._ws = ws
-            logger.info("Connected. Streaming bookTicker for %d symbols.", len(self._settings.symbols))
+            logger.info("[%s] Connected. Streaming bookTicker for %d symbols.", self._label, len(self._symbols))
             async for raw in ws:
                 if not self._running:
                     break

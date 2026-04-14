@@ -53,7 +53,7 @@ class TestEndToEnd:
             port = server.sockets[0].getsockname()[1]
             settings = Settings(
                 symbols=symbols,
-                ws_url=f"ws://127.0.0.1:{port}",
+                spot_ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "integ.db"),
                 batch_interval_ms=50,
             )
@@ -61,7 +61,7 @@ class TestEndToEnd:
             store = QuoteStore(db_path=settings.db_path, batch_size=10)
             await store.init_db()
 
-            ws_client = BinanceWSClient(settings, store)
+            ws_client = BinanceWSClient(settings.symbols, settings.spot_ws_url, store)
             app = create_app(store)
 
             stop_event = asyncio.Event()

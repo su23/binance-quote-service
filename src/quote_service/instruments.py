@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 BINANCE_MARKET_CAP_URL = (
     "https://www.binance.com/bapi/apex/v1/friendly/apex/marketing/complianceSymbolList"
 )
+BINANCE_FUTURES_EXCHANGE_INFO = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 
 async def fetch_top_instruments(
     n: int = 10,
@@ -60,3 +61,22 @@ async def fetch_top_instruments(
 
     top = [sym for sym, _base, _mcap in deduped[:n]]
     return top
+
+
+async def fetch_futures_symbols(
+    base_url: str = BINANCE_FUTURES_EXCHANGE_INFO,
+) -> set[str]:
+    """Fetch the set of symbols available on Binance USD-M Futures.
+
+    Returns uppercase symbol strings like ``{"BTCUSDT", "ETHUSDT", ...}``.
+    """
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(base_url)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        s["symbol"]
+        for s in data.get("symbols", [])
+        if s.get("status") == "TRADING" and s.get("contractType") == "PERPETUAL"
+    }
