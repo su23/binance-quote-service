@@ -66,11 +66,10 @@ class QuoteStore:
         if not self._buffer:
             return 0
 
-        # Atomic swap: grab current buffer, replace with empty list.
-        # update() appends to self._buffer, so any calls during the
-        # await below will write to the new list, not to_write.
-        to_write = self._buffer
-        self._buffer = []
+        # Single-expression swap: grabs the old list and replaces it
+        # with a new empty one in one statement — no way for update()
+        # to interleave, even if an await were somehow added nearby.
+        to_write, self._buffer = self._buffer, []
 
         rows = [
             (q.symbol, q.bid_price, q.bid_size, q.ask_price, q.ask_size, q.event_time)
