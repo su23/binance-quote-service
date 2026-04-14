@@ -1,29 +1,30 @@
 # Binance Quote Service
 
-Real-time streaming quote service for the top 10 Binance perpetual futures instruments by market capitalization.
+Real-time streaming quote service for the top 10 Binance instruments by market capitalization.
 
-Connects to Binance USD-M Futures WebSocket API, streams best bid/ask (bookTicker) data, persists quotes to SQLite, and serves the latest quotes via a REST API.
+Connects to Binance WebSocket APIs (USD-M Futures where available, Spot for the rest), streams best bid/ask (bookTicker) data, persists quotes to SQLite, and serves the latest quotes via a REST API.
 
 ## Architecture
 
 ```
 Binance USD-M Futures        websockets            orjson.loads
-  wss://fstream.binance.com ──────────> WS Client ──────────> store.update()
-  (bookTicker x 10 symbols)                                       │
-                                                       ┌──────────┴──────────┐
-                                                       ▼                     ▼
-                                                 In-Memory Dict         SQLite (WAL)
-                                                 (latest quotes)     (periodic flush)
-                                                       │
-                                                       ▼
-                                                 FastAPI REST API
+  wss://fstream.binance.com ──────────┐
+  (bookTicker)                        ├──> WS Client(s) ──────────> store.update()
+Binance Spot                          │                                  │
+  wss://stream.binance.com:9443 ──────┘                       ┌─────────┴─────────┐
+                                                              ▼                   ▼
+                                                        In-Memory Dict      SQLite (WAL)
+                                                        (latest quotes)   (periodic flush)
+                                                              │
+                                                              ▼
+                                                        FastAPI REST API
 ```
 
 - **WebSocket client** connects to Binance combined bookTicker stream with auto-reconnect and exponential backoff
 - **In-memory dict** stores the latest quote per symbol for O(1) reads
 - **SQLite (WAL mode)** persists all quotes with batched writes for I/O efficiency
 - **FastAPI** serves the REST API with auto-generated OpenAPI docs
-- At startup, the top 10 instruments are **automatically discovered** from the Binance Spot API, ranked by `quoteVolume × lastPrice` as an estimated market cap proxy (spot volumes avoid leverage inflation)
+- At startup, the top 10 instruments are **automatically discovered** from the Binance market data API, ranked by market capitalization (circulating supply × price)
 
 ### Performance
 
@@ -122,7 +123,7 @@ pytest -v
 # Run specific test module
 pytest tests/test_store.py -v
 
-# Run with coverage (install pytest-cov first)
+# Run with coverage
 pytest --cov=quote_service -v
 ```
 
