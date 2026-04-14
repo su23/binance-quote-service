@@ -8,6 +8,8 @@ build/
 *.db-wal
 *.db-journal
 .pytest_cache/
+.coverage
+htmlcov/
 .venv/
 *.egg
 .idea/

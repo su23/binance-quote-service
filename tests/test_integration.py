@@ -34,6 +34,38 @@ def _book_ticker_msg(symbol: str, bid: str, ask: str) -> str:
     )
 
 
+class TestFlushLoop:
+    @pytest.mark.asyncio
+    async def test_continues_after_flush_error(self, tmp_path):
+        """flush_loop must survive a failing flush() and keep running."""
+        store = QuoteStore(db_path=str(tmp_path / "err.db"), batch_size=10)
+        await store.init_db()
+
+        call_count = 0
+        original_flush = store.flush
+
+        async def flaky_flush() -> int:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OSError("disk full")
+            return await original_flush()
+
+        store.flush = flaky_flush  # type: ignore[assignment]
+
+        stop_event = asyncio.Event()
+        task = asyncio.create_task(flush_loop(store, 0.05, stop_event))
+
+        # Wait long enough for at least 3 flush cycles
+        await asyncio.sleep(0.25)
+        stop_event.set()
+        await task
+
+        # The loop must have called flush multiple times despite the first error
+        assert call_count >= 3
+        await store.close()
+
+
 class TestEndToEnd:
     @pytest.mark.asyncio
     async def test_full_pipeline(self, tmp_path):
@@ -53,7 +85,7 @@ class TestEndToEnd:
             port = server.sockets[0].getsockname()[1]
             settings = Settings(
                 symbols=symbols,
-                ws_url=f"ws://127.0.0.1:{port}",
+                spot_ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "integ.db"),
                 batch_interval_ms=50,
             )
@@ -61,12 +93,13 @@ class TestEndToEnd:
             store = QuoteStore(db_path=settings.db_path, batch_size=10)
             await store.init_db()
 
-            ws_client = BinanceWSClient(settings, store)
+            ws_client = BinanceWSClient(settings.symbols, settings.spot_ws_url, store)
             app = create_app(store)
 
+            stop_event = asyncio.Event()
             ws_task = asyncio.create_task(ws_client.run())
             flush_task = asyncio.create_task(
-                flush_loop(store, settings.batch_interval_ms / 1000.0)
+                flush_loop(store, settings.batch_interval_ms / 1000.0, stop_event)
             )
 
             try:
@@ -110,14 +143,11 @@ class TestEndToEnd:
                 assert len(history) >= 2  # At least the two BTCUSDT quotes
             finally:
                 ws_client.stop()
+                stop_event.set()
                 ws_task.cancel()
-                flush_task.cancel()
                 try:
                     await ws_task
                 except asyncio.CancelledError:
                     pass
-                try:
-                    await flush_task
-                except asyncio.CancelledError:
-                    pass
+                await flush_task
                 await store.close()

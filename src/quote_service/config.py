@@ -13,8 +13,9 @@ FALLBACK_SYMBOLS: list[str] = [
     "LINKUSDT",
 ]
 
+BINANCE_SPOT_WS = "wss://stream.binance.com:9443"
 BINANCE_FUTURES_WS = "wss://fstream.binance.com"
-BINANCE_SPOT_REST = "https://api.binance.com"
+BINANCE_FUTURES_REST = "https://fapi.binance.com"
 
 
 class Settings(BaseSettings):
@@ -27,5 +28,6 @@ class Settings(BaseSettings):
     api_port: int = 8000
     batch_size: int = 50
     batch_interval_ms: int = 100
-    ws_url: str = BINANCE_FUTURES_WS
-    rest_url: str = BINANCE_SPOT_REST
+    spot_ws_url: str = BINANCE_SPOT_WS
+    futures_ws_url: str = BINANCE_FUTURES_WS
+    futures_rest_url: str = BINANCE_FUTURES_REST

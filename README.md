@@ -1,29 +1,32 @@
 # Binance Quote Service
 
-Real-time streaming quote service for the top 10 Binance perpetual futures instruments by market capitalization.
+[![CI](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml/badge.svg)](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml)
 
-Connects to Binance USD-M Futures WebSocket API, streams best bid/ask (bookTicker) data, persists quotes to SQLite, and serves the latest quotes via a REST API.
+Real-time streaming quote service for the top 10 Binance instruments by market capitalization.
+
+Connects to Binance WebSocket APIs (USD-M Futures where available, Spot for the rest), streams best bid/ask (bookTicker) data, persists quotes to SQLite, and serves the latest quotes via a REST API.
 
 ## Architecture
 
 ```
 Binance USD-M Futures        websockets            orjson.loads
-  wss://fstream.binance.com ──────────> WS Client ──────────> store.update()
-  (bookTicker x 10 symbols)                                       │
-                                                       ┌──────────┴──────────┐
-                                                       ▼                     ▼
-                                                 In-Memory Dict         SQLite (WAL)
-                                                 (latest quotes)     (periodic flush)
-                                                       │
-                                                       ▼
-                                                 FastAPI REST API
+  wss://fstream.binance.com ──────────┐
+  (bookTicker)                        ├──> WS Client(s) ──────────> store.update()
+Binance Spot                          │                                  │
+  wss://stream.binance.com:9443 ──────┘                       ┌─────────┴─────────┐
+                                                              ▼                   ▼
+                                                        In-Memory Dict      SQLite (WAL)
+                                                        (latest quotes)   (periodic flush)
+                                                              │
+                                                              ▼
+                                                        FastAPI REST API
 ```
 
 - **WebSocket client** connects to Binance combined bookTicker stream with auto-reconnect and exponential backoff
 - **In-memory dict** stores the latest quote per symbol for O(1) reads
 - **SQLite (WAL mode)** persists all quotes with batched writes for I/O efficiency
 - **FastAPI** serves the REST API with auto-generated OpenAPI docs
-- At startup, the top 10 instruments are **automatically discovered** from the Binance Spot API, ranked by `quoteVolume × lastPrice` as an estimated market cap proxy (spot volumes avoid leverage inflation)
+- At startup, the top 10 instruments are **automatically discovered** from the Binance market data API, ranked by market capitalization (circulating supply × price)
 
 ### Performance
 
@@ -51,6 +54,20 @@ pip install -e ".[dev]"
 
 ## Run
 
+### Docker
+
+```bash
+docker build -t quote-service .
+
+# Run with persistent storage (quotes survive container restarts)
+docker run -p 8000:8000 -v $(pwd)/data:/data quote-service
+
+# Or without persistence (data lost on container stop)
+docker run -p 8000:8000 quote-service
+```
+
+### Local
+
 ```bash
 # With auto-discovered top 10 instruments (default)
 quote-service
@@ -70,6 +87,7 @@ The REST API starts on `http://0.0.0.0:8000` by default.
 |---|---|
 | `GET /quotes` | Latest quotes for all tracked instruments |
 | `GET /quotes/{symbol}` | Latest quote for a specific symbol (e.g., `/quotes/BTCUSDT`) |
+| `GET /quotes/{symbol}/history?limit=100` | Recent quote history from SQLite (1–1000, default 100) |
 | `GET /health` | Service health check with active symbol count and uptime |
 | `GET /docs` | Interactive OpenAPI documentation (Swagger UI) |
 
@@ -99,8 +117,9 @@ All settings are configured via environment variables with the `QS_` prefix:
 | `QS_API_PORT` | `8000` | API server port |
 | `QS_BATCH_SIZE` | `50` | Max quotes per DB batch write |
 | `QS_BATCH_INTERVAL_MS` | `100` | DB flush interval in milliseconds |
-| `QS_WS_URL` | `wss://fstream.binance.com` | Binance WebSocket URL |
-| `QS_REST_URL` | `https://api.binance.com` | Binance Spot REST API URL (for instrument discovery) |
+| `QS_SPOT_WS_URL` | `wss://stream.binance.com:9443` | Binance Spot WebSocket URL |
+| `QS_FUTURES_WS_URL` | `wss://fstream.binance.com` | Binance USD-M Futures WebSocket URL |
+| `QS_FUTURES_REST_URL` | `https://fapi.binance.com` | Binance Futures REST API URL (for symbol discovery) |
 
 ## Test
 
@@ -111,9 +130,18 @@ pytest -v
 # Run specific test module
 pytest tests/test_store.py -v
 
-# Run with coverage (install pytest-cov first)
+# Run with coverage
 pytest --cov=quote_service -v
+
+# Run latency benchmarks
+pytest tests/test_benchmark.py -v
 ```
+
+CI runs automatically on push/PR to `main` via GitHub Actions (see `.github/workflows/ci.yml`), testing Python 3.11–3.13 with a 90% coverage gate.
+
+## Limitations
+
+- **SQLite is single-node only.** The WAL-mode SQLite database supports concurrent reads from the API while the flush loop writes, but it does not support multi-process or distributed deployments. For horizontal scaling, swap to PostgreSQL or another networked database.
 
 ## Project Structure
 
