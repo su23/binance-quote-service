@@ -70,6 +70,8 @@ class BinanceWSClient:
         ) as ws:
             logger.info("Connected. Streaming bookTicker for %d symbols.", len(self._settings.symbols))
             async for raw in ws:
+                if not self._running:
+                    break
                 msg = json.loads(raw)
                 data = msg.get("data")
                 if data is None:
@@ -79,7 +81,10 @@ class BinanceWSClient:
                 except (KeyError, ValueError) as exc:
                     logger.debug("Skipping malformed message: %s", exc)
                     continue
-                self._queue.put_nowait(quote)
+                try:
+                    self._queue.put_nowait(quote)
+                except asyncio.QueueFull:
+                    pass  # drop quote under backpressure
                 received += 1
         return received
 
