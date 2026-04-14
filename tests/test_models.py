@@ -36,7 +36,6 @@ class TestParseBookTicker:
         assert q.ask_price == 50001.00
         assert q.ask_size == 2.0
         assert q.event_time == 1700000000000
-        assert q.receive_time_ns > 0
 
     def test_small_prices(self):
         raw = _make_raw(bid="0.00000100", bid_qty="1000000", ask="0.00000101", ask_qty="999999")
@@ -63,25 +62,28 @@ class TestParseBookTicker:
 
 
 class TestQuoteResponse:
-    def test_from_quote(self):
-        q = Quote(
+    def test_schema(self):
+        resp = QuoteResponse(
             symbol="ETHUSDT",
             bid_price=3000.0,
             bid_size=10.0,
             ask_price=3001.0,
             ask_size=5.0,
-            event_time=1700000000000,
-            receive_time_ns=123456789,
+            event_time_ms=1700000000000,
         )
-        resp = QuoteResponse.from_quote(q)
         assert resp.symbol == "ETHUSDT"
         assert resp.bid_price == 3000.0
-        assert resp.ask_price == 3001.0
         assert resp.event_time_ms == 1700000000000
 
     def test_serialization(self):
-        q = Quote("X", 1.0, 2.0, 3.0, 4.0, 100, 200)
-        resp = QuoteResponse.from_quote(q)
+        resp = QuoteResponse(
+            symbol="X",
+            bid_price=1.0,
+            bid_size=2.0,
+            ask_price=3.0,
+            ask_size=4.0,
+            event_time_ms=100,
+        )
         data = resp.model_dump()
         assert set(data.keys()) == {
             "symbol",
@@ -90,5 +92,4 @@ class TestQuoteResponse:
             "ask_price",
             "ask_size",
             "event_time_ms",
-            "receive_latency_us",
         }

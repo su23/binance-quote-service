@@ -71,20 +71,22 @@ class QuoteStore:
         # to interleave, even if an await were somehow added nearby.
         to_write, self._buffer = self._buffer, []
 
-        rows = [
-            (q.symbol, q.bid_price, q.bid_size, q.ask_price, q.ask_size, q.event_time)
-            for q in to_write
-        ]
         assert self._db is not None
-        await self._db.executemany(_INSERT, rows)
+        await self._db.executemany(
+            _INSERT,
+            ((q.symbol, q.bid_price, q.bid_size, q.ask_price, q.ask_size, q.event_time)
+             for q in to_write),
+        )
         await self._db.commit()
-        return len(rows)
+        return len(to_write)
 
     def get_latest(self, symbol: str) -> Quote | None:
         return self._latest.get(symbol.upper())
 
     def get_all_latest(self) -> dict[str, Quote]:
-        return dict(self._latest)
+        # Safe to return directly: single-threaded event loop, dict can't
+        # mutate during a synchronous iteration in the caller.
+        return self._latest
 
     async def get_history(
         self, symbol: str, limit: int = 100

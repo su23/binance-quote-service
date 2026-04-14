@@ -21,7 +21,6 @@ def _quote(
         ask_price=ask,
         ask_size=1.0,
         event_time=event_time,
-        receive_time_ns=0,
     )
 
 

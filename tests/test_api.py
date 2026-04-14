@@ -9,7 +9,7 @@ from quote_service.store import QuoteStore
 
 
 def _quote(symbol: str = "BTCUSDT", bid: float = 50000.0, ask: float = 50001.0) -> Quote:
-    return Quote(symbol, bid, 1.0, ask, 1.0, 1700000000000, 0)
+    return Quote(symbol, bid, 1.0, ask, 1.0, 1700000000000)
 
 
 @pytest.fixture
