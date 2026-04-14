@@ -70,6 +70,7 @@ The REST API starts on `http://0.0.0.0:8000` by default.
 |---|---|
 | `GET /quotes` | Latest quotes for all tracked instruments |
 | `GET /quotes/{symbol}` | Latest quote for a specific symbol (e.g., `/quotes/BTCUSDT`) |
+| `GET /quotes/{symbol}/history?limit=100` | Recent quote history from SQLite (1–1000, default 100) |
 | `GET /health` | Service health check with active symbol count and uptime |
 | `GET /docs` | Interactive OpenAPI documentation (Swagger UI) |
 
