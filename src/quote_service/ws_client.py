@@ -15,6 +15,7 @@ from .store import QuoteStore
 logger = logging.getLogger(__name__)
 
 MAX_RECONNECT_DELAY = 30.0
+INITIAL_RECONNECT_DELAY = 1.0
 
 
 class BinanceWSClient:
@@ -32,6 +33,7 @@ class BinanceWSClient:
         self._running = False
         self._label = label or ws_url
         self._ws: websockets.asyncio.client.ClientConnection | None = None
+        self._received = 0
         streams = "/".join(
             f"{s.lower()}@bookTicker" for s in symbols
         )
@@ -40,13 +42,11 @@ class BinanceWSClient:
     async def run(self) -> None:
         """Run the WebSocket listener with auto-reconnect."""
         self._running = True
-        delay = 1.0
+        delay = INITIAL_RECONNECT_DELAY
         while self._running:
+            self._received = 0
             try:
-                received = await self._connect_and_listen()
-                # If we received data, the connection was healthy — reset delay
-                if received:
-                    delay = 1.0
+                await self._connect_and_listen()
             except (
                 websockets.exceptions.ConnectionClosed,
                 websockets.exceptions.WebSocketException,
@@ -54,21 +54,26 @@ class BinanceWSClient:
             ) as exc:
                 if not self._running:
                     break
+                # If we received messages, the connection was healthy before
+                # it dropped — reset delay instead of escalating.
+                if self._received > 0:
+                    delay = INITIAL_RECONNECT_DELAY
                 logger.warning(
-                    "WebSocket disconnected: %s. Reconnecting in %.1fs…",
+                    "[%s] WebSocket disconnected after %d msgs: %s. Reconnecting in %.1fs…",
+                    self._label,
+                    self._received,
                     exc,
                     delay,
                 )
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, MAX_RECONNECT_DELAY)
 
-    async def _connect_and_listen(self) -> int:
-        """Connect and stream messages. Returns the number of messages received."""
-        logger.info("Connecting to %s", self._url)
+    async def _connect_and_listen(self) -> None:
+        """Connect and stream messages until disconnected."""
+        logger.info("[%s] Connecting to %s", self._label, self._url)
         ssl_ctx: ssl.SSLContext | None = None
         if self._url.startswith("wss://"):
             ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-        received = 0
         async with websockets.asyncio.client.connect(
             self._url,
             ssl=ssl_ctx,
@@ -91,9 +96,8 @@ class BinanceWSClient:
                     logger.debug("Skipping malformed message: %s", exc)
                     continue
                 self._store.update(quote)
-                received += 1
+                self._received += 1
         self._ws = None
-        return received
 
     def stop(self) -> None:
         self._running = False
