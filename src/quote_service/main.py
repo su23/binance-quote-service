@@ -22,9 +22,13 @@ async def flush_loop(store: QuoteStore, interval_s: float, stop_event: asyncio.E
             await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
         except asyncio.TimeoutError:
             pass
-        n = await store.flush()
-        if n:
-            logger.debug("Flushed %d quotes to DB", n)
+        try:
+            n = await store.flush()
+        except Exception:
+            logger.exception("Failed to flush quotes to DB")
+        else:
+            if n:
+                logger.debug("Flushed %d quotes to DB", n)
 
 
 async def run(settings: Settings | None = None) -> None:
