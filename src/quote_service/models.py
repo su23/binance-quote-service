@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from pydantic import BaseModel
@@ -12,19 +13,21 @@ class Quote:
     bid_size: float
     ask_price: float
     ask_size: float
-    event_time: int  # Binance event timestamp (ms)
+    event_time: int  # timestamp in ms
 
 
 def parse_book_ticker(data: dict) -> Quote:
-    """Parse a Binance futures bookTicker message into a Quote.
+    """Parse a Binance bookTicker message into a Quote.
 
-    Expected fields (futures combined-stream payload):
+    Works with both spot and futures payloads:
         s  - symbol
         b  - best bid price
         B  - best bid qty
         a  - best ask price
         A  - best ask qty
-        E  - event time (ms, already int from orjson)
+        E  - event time (ms) — present on futures, absent on spot
+
+    When E is missing (spot), uses the current wall-clock time.
     """
     return Quote(
         symbol=data["s"],
@@ -32,7 +35,7 @@ def parse_book_ticker(data: dict) -> Quote:
         bid_size=float(data["B"]),
         ask_price=float(data["a"]),
         ask_size=float(data["A"]),
-        event_time=data["E"],
+        event_time=data.get("E") or int(time.time() * 1000),
     )
 
 

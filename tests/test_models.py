@@ -60,6 +60,16 @@ class TestParseBookTicker:
             q = parse_book_ticker(_make_raw(symbol=sym))
             assert q.symbol == sym
 
+    def test_spot_format_no_event_time(self):
+        """Spot bookTicker has no E field — should use wall-clock time."""
+        raw = {"u": 123, "s": "BTCUSDT", "b": "50000", "B": "1.0", "a": "50001", "A": "2.0"}
+        q = parse_book_ticker(raw)
+        assert q.symbol == "BTCUSDT"
+        # event_time should be roughly now (within last 2 seconds)
+        import time
+        now_ms = int(time.time() * 1000)
+        assert abs(q.event_time - now_ms) < 2000
+
 
 class TestQuoteResponse:
     def test_schema(self):
