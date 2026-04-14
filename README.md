@@ -51,6 +51,15 @@ pip install -e ".[dev]"
 
 ## Run
 
+### Docker
+
+```bash
+docker build -t quote-service .
+docker run -p 8000:8000 quote-service
+```
+
+### Local
+
 ```bash
 # With auto-discovered top 10 instruments (default)
 quote-service
