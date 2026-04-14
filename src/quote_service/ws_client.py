@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 
+import certifi
 import websockets
 import websockets.asyncio.client
 
@@ -52,14 +54,17 @@ class BinanceWSClient:
 
     async def _connect_and_listen(self) -> None:
         logger.info("Connecting to %s", self._url)
+        ssl_ctx: ssl.SSLContext | None = None
+        if self._url.startswith("wss://"):
+            ssl_ctx = ssl.create_default_context(cafile=certifi.where())
         async with websockets.asyncio.client.connect(
             self._url,
+            ssl=ssl_ctx,
             ping_interval=20,
             ping_timeout=60,
             close_timeout=5,
         ) as ws:
             logger.info("Connected. Streaming bookTicker for %d symbols.", len(self._settings.symbols))
-            delay_reset = True
             async for raw in ws:
                 msg = json.loads(raw)
                 data = msg.get("data")
