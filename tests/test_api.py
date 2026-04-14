@@ -91,3 +91,36 @@ class TestGetSingleQuote:
         data = resp.json()
         assert data["bid_price"] == 49999.50
         assert data["ask_price"] == 50000.50
+
+
+class TestGetHistory:
+    @pytest.mark.asyncio
+    async def test_history_returns_persisted_quotes(self, client: AsyncClient, store: QuoteStore):
+        store.update(_quote("BTCUSDT", bid=50000.0, ask=50001.0))
+        store.update(_quote("BTCUSDT", bid=50010.0, ask=50011.0))
+        await store.flush()
+        resp = await client.get("/quotes/BTCUSDT/history")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+
+    @pytest.mark.asyncio
+    async def test_history_not_found(self, client: AsyncClient):
+        resp = await client.get("/quotes/NONEXIST/history")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_history_limit(self, client: AsyncClient, store: QuoteStore):
+        for i in range(5):
+            store.update(Quote("BTCUSDT", 50000.0 + i, 1.0, 50001.0 + i, 1.0, 1700000000000 + i))
+        await store.flush()
+        resp = await client.get("/quotes/BTCUSDT/history?limit=3")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 3
+
+    @pytest.mark.asyncio
+    async def test_history_limit_validation(self, client: AsyncClient):
+        resp = await client.get("/quotes/BTCUSDT/history?limit=0")
+        assert resp.status_code == 422
+        resp = await client.get("/quotes/BTCUSDT/history?limit=1001")
+        assert resp.status_code == 422

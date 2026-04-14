@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from .models import Quote, QuoteResponse
 from .store import QuoteStore
@@ -34,6 +34,16 @@ def create_app(store: QuoteStore) -> FastAPI:
         if q is None:
             raise HTTPException(status_code=404, detail=f"No quote for {symbol.upper()}")
         return _quote_to_dict(q)
+
+    @app.get("/quotes/{symbol}/history", response_model=list[QuoteResponse])
+    async def get_history(
+        symbol: str,
+        limit: int = Query(default=100, ge=1, le=1000),
+    ) -> list[dict]:
+        rows = await store.get_history(symbol, limit=limit)
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"No history for {symbol.upper()}")
+        return rows
 
     @app.get("/health")
     async def health() -> dict:
