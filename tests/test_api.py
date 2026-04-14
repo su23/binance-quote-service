@@ -105,9 +105,10 @@ class TestGetHistory:
         assert len(data) == 2
 
     @pytest.mark.asyncio
-    async def test_history_not_found(self, client: AsyncClient):
+    async def test_history_empty(self, client: AsyncClient):
         resp = await client.get("/quotes/NONEXIST/history")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.json() == []
 
     @pytest.mark.asyncio
     async def test_history_limit(self, client: AsyncClient, store: QuoteStore):

@@ -109,8 +109,9 @@ All settings are configured via environment variables with the `QS_` prefix:
 | `QS_API_PORT` | `8000` | API server port |
 | `QS_BATCH_SIZE` | `50` | Max quotes per DB batch write |
 | `QS_BATCH_INTERVAL_MS` | `100` | DB flush interval in milliseconds |
-| `QS_WS_URL` | `wss://fstream.binance.com` | Binance WebSocket URL |
-| `QS_REST_URL` | `https://api.binance.com` | Binance Spot REST API URL (for instrument discovery) |
+| `QS_SPOT_WS_URL` | `wss://stream.binance.com:9443` | Binance Spot WebSocket URL |
+| `QS_FUTURES_WS_URL` | `wss://fstream.binance.com` | Binance USD-M Futures WebSocket URL |
+| `QS_FUTURES_REST_URL` | `https://fapi.binance.com` | Binance Futures REST API URL (for symbol discovery) |
 
 ## Test
 

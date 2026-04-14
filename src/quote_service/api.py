@@ -38,10 +38,7 @@ def create_app(store: QuoteStore) -> FastAPI:
         symbol: str,
         limit: int = Query(default=100, ge=1, le=1000),
     ) -> list[dict]:
-        rows = await store.get_history(symbol, limit=limit)
-        if not rows:
-            raise HTTPException(status_code=404, detail=f"No history for {symbol.upper()}")
-        return rows
+        return await store.get_history(symbol, limit=limit)
 
     @app.get("/health")
     async def health() -> dict:
