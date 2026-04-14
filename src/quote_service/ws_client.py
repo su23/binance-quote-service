@@ -35,8 +35,10 @@ class BinanceWSClient:
         delay = 1.0
         while self._running:
             try:
-                await self._connect_and_listen()
-                delay = 1.0  # reset on clean disconnect
+                received = await self._connect_and_listen()
+                # If we received data, the connection was healthy — reset delay
+                if received:
+                    delay = 1.0
             except (
                 websockets.exceptions.ConnectionClosed,
                 websockets.exceptions.WebSocketException,
@@ -52,11 +54,13 @@ class BinanceWSClient:
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, MAX_RECONNECT_DELAY)
 
-    async def _connect_and_listen(self) -> None:
+    async def _connect_and_listen(self) -> int:
+        """Connect and stream messages. Returns the number of messages received."""
         logger.info("Connecting to %s", self._url)
         ssl_ctx: ssl.SSLContext | None = None
         if self._url.startswith("wss://"):
             ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        received = 0
         async with websockets.asyncio.client.connect(
             self._url,
             ssl=ssl_ctx,
@@ -76,6 +80,8 @@ class BinanceWSClient:
                     logger.debug("Skipping malformed message: %s", exc)
                     continue
                 self._queue.put_nowait(quote)
+                received += 1
+        return received
 
     def stop(self) -> None:
         self._running = False
