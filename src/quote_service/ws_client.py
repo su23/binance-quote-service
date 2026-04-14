@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import ssl
 
 import certifi
+import orjson
 import websockets
 import websockets.asyncio.client
 
 from .config import Settings
-from .models import Quote, parse_book_ticker
+from .models import parse_book_ticker
+from .store import QuoteStore
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,11 @@ MAX_RECONNECT_DELAY = 30.0
 
 
 class BinanceWSClient:
-    """Connects to Binance combined bookTicker stream and pushes Quotes to a queue."""
+    """Connects to Binance combined bookTicker stream and updates the store directly."""
 
-    def __init__(self, settings: Settings, queue: asyncio.Queue[Quote]) -> None:
+    def __init__(self, settings: Settings, store: QuoteStore) -> None:
         self._settings = settings
-        self._queue = queue
+        self._store = store
         self._running = False
         streams = "/".join(
             f"{s.lower()}@bookTicker" for s in settings.symbols
@@ -72,7 +73,7 @@ class BinanceWSClient:
             async for raw in ws:
                 if not self._running:
                     break
-                msg = json.loads(raw)
+                msg = orjson.loads(raw)
                 data = msg.get("data")
                 if data is None:
                     continue
@@ -81,10 +82,7 @@ class BinanceWSClient:
                 except (KeyError, ValueError) as exc:
                     logger.debug("Skipping malformed message: %s", exc)
                     continue
-                try:
-                    self._queue.put_nowait(quote)
-                except asyncio.QueueFull:
-                    pass  # drop quote under backpressure
+                self._store.update(quote)
                 received += 1
         return received
 

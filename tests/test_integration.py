@@ -10,8 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from quote_service.api import create_app
 from quote_service.config import Settings
-from quote_service.main import process_quotes
-from quote_service.models import Quote
+from quote_service.main import flush_loop
 from quote_service.store import QuoteStore
 from quote_service.ws_client import BinanceWSClient
 
@@ -38,19 +37,16 @@ def _book_ticker_msg(symbol: str, bid: str, ask: str) -> str:
 class TestEndToEnd:
     @pytest.mark.asyncio
     async def test_full_pipeline(self, tmp_path):
-        """Mock WS -> WS Client -> Queue -> Processor -> Store -> API."""
+        """Mock WS -> WS Client -> Store -> API."""
         symbols = ["BTCUSDT", "ETHUSDT"]
-        quotes_sent = 0
 
         async def handler(ws):
-            nonlocal quotes_sent
             for sym, bid, ask in [
                 ("BTCUSDT", "50000.00", "50001.00"),
                 ("ETHUSDT", "3000.00", "3001.00"),
                 ("BTCUSDT", "50100.00", "50101.00"),  # update
             ]:
                 await ws.send(_book_ticker_msg(sym, bid, ask))
-                quotes_sent += 1
             await asyncio.sleep(2.0)  # keep connection alive
 
         async with websockets.asyncio.server.serve(handler, "127.0.0.1", 0) as server:
@@ -65,13 +61,12 @@ class TestEndToEnd:
             store = QuoteStore(db_path=settings.db_path, batch_size=10)
             await store.init_db()
 
-            queue: asyncio.Queue[Quote] = asyncio.Queue()
-            ws_client = BinanceWSClient(settings, queue)
+            ws_client = BinanceWSClient(settings, store)
             app = create_app(store)
 
             ws_task = asyncio.create_task(ws_client.run())
-            proc_task = asyncio.create_task(
-                process_quotes(queue, store, settings.batch_interval_ms / 1000.0)
+            flush_task = asyncio.create_task(
+                flush_loop(store, settings.batch_interval_ms / 1000.0)
             )
 
             try:
@@ -116,13 +111,13 @@ class TestEndToEnd:
             finally:
                 ws_client.stop()
                 ws_task.cancel()
-                proc_task.cancel()
+                flush_task.cancel()
                 try:
                     await ws_task
                 except asyncio.CancelledError:
                     pass
                 try:
-                    await proc_task
+                    await flush_task
                 except asyncio.CancelledError:
                     pass
                 await store.close()

@@ -8,7 +8,7 @@ import websockets
 import websockets.asyncio.server
 
 from quote_service.config import Settings
-from quote_service.models import Quote
+from quote_service.store import QuoteStore
 from quote_service.ws_client import BinanceWSClient
 
 
@@ -31,18 +31,28 @@ def _book_ticker_msg(symbol: str = "BTCUSDT", bid: str = "50000.00", ask: str = 
     )
 
 
+async def _wait_for_store(store: QuoteStore, symbol: str, *, expected_bid: float | None = None, timeout: float = 5.0):
+    """Poll the store until the expected quote appears."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        q = store.get_latest(symbol)
+        if q is not None:
+            if expected_bid is None or q.bid_price == expected_bid:
+                return q
+        await asyncio.sleep(0.01)
+    raise TimeoutError(f"Quote for {symbol} (bid={expected_bid}) not found in store within {timeout}s")
+
+
 class TestWSClient:
     @pytest.mark.asyncio
     async def test_receives_quotes(self, tmp_path):
-        """WS client should parse bookTicker messages and put them on the queue."""
-        received: list[Quote] = []
+        """WS client should parse bookTicker messages and update the store."""
         send_count = 5
 
         async def handler(ws):
             for i in range(send_count):
                 await ws.send(_book_ticker_msg(bid=str(50000 + i)))
-            # Keep connection open briefly so client processes messages
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
 
         async with websockets.asyncio.server.serve(handler, "127.0.0.1", 0) as server:
             port = server.sockets[0].getsockname()[1]
@@ -51,14 +61,16 @@ class TestWSClient:
                 ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "test.db"),
             )
-            queue: asyncio.Queue[Quote] = asyncio.Queue()
-            client = BinanceWSClient(settings, queue)
+            store = QuoteStore(db_path=settings.db_path)
+            await store.init_db()
+            client = BinanceWSClient(settings, store)
 
             task = asyncio.create_task(client.run())
             try:
-                for _ in range(send_count):
-                    q = await asyncio.wait_for(queue.get(), timeout=5.0)
-                    received.append(q)
+                # Last message has bid=50004, wait for that
+                q = await _wait_for_store(store, "BTCUSDT", expected_bid=50004.0)
+                assert q.symbol == "BTCUSDT"
+                assert q.bid_price == 50004.0
             finally:
                 client.stop()
                 task.cancel()
@@ -66,11 +78,7 @@ class TestWSClient:
                     await task
                 except asyncio.CancelledError:
                     pass
-
-        assert len(received) == send_count
-        assert received[0].symbol == "BTCUSDT"
-        assert received[0].bid_price == 50000.0
-        assert received[4].bid_price == 50004.0
+                await store.close()
 
     @pytest.mark.asyncio
     async def test_skips_malformed_messages(self, tmp_path):
@@ -84,7 +92,7 @@ class TestWSClient:
             }))
             # Followed by a valid one
             await ws.send(_book_ticker_msg())
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
 
         async with websockets.asyncio.server.serve(handler, "127.0.0.1", 0) as server:
             port = server.sockets[0].getsockname()[1]
@@ -93,12 +101,13 @@ class TestWSClient:
                 ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "test.db"),
             )
-            queue: asyncio.Queue[Quote] = asyncio.Queue()
-            client = BinanceWSClient(settings, queue)
+            store = QuoteStore(db_path=settings.db_path)
+            await store.init_db()
+            client = BinanceWSClient(settings, store)
 
             task = asyncio.create_task(client.run())
             try:
-                q = await asyncio.wait_for(queue.get(), timeout=5.0)
+                q = await _wait_for_store(store, "BTCUSDT")
                 assert q.symbol == "BTCUSDT"
                 assert q.bid_price == 50000.0
             finally:
@@ -108,6 +117,7 @@ class TestWSClient:
                     await task
                 except asyncio.CancelledError:
                     pass
+                await store.close()
 
     @pytest.mark.asyncio
     async def test_reconnects_on_disconnect(self, tmp_path):
@@ -124,7 +134,7 @@ class TestWSClient:
             else:
                 # Second connection: send another message
                 await ws.send(_book_ticker_msg(bid="51000.00"))
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(2.0)
 
         async with websockets.asyncio.server.serve(handler, "127.0.0.1", 0) as server:
             port = server.sockets[0].getsockname()[1]
@@ -133,15 +143,15 @@ class TestWSClient:
                 ws_url=f"ws://127.0.0.1:{port}",
                 db_path=str(tmp_path / "test.db"),
             )
-            queue: asyncio.Queue[Quote] = asyncio.Queue()
-            client = BinanceWSClient(settings, queue)
+            store = QuoteStore(db_path=settings.db_path)
+            await store.init_db()
+            client = BinanceWSClient(settings, store)
 
             task = asyncio.create_task(client.run())
             try:
-                q1 = await asyncio.wait_for(queue.get(), timeout=5.0)
-                assert q1.bid_price == 50000.0
-                q2 = await asyncio.wait_for(queue.get(), timeout=10.0)
-                assert q2.bid_price == 51000.0
+                # After reconnect, store should have the updated bid
+                q = await _wait_for_store(store, "BTCUSDT", expected_bid=51000.0, timeout=10.0)
+                assert q.bid_price == 51000.0
                 assert connection_count == 2
             finally:
                 client.stop()
@@ -150,6 +160,7 @@ class TestWSClient:
                     await task
                 except asyncio.CancelledError:
                     pass
+                await store.close()
 
     @pytest.mark.asyncio
     async def test_url_construction(self, tmp_path):
@@ -159,8 +170,8 @@ class TestWSClient:
             ws_url="wss://fstream.binance.com",
             db_path=str(tmp_path / "test.db"),
         )
-        queue: asyncio.Queue[Quote] = asyncio.Queue()
-        client = BinanceWSClient(settings, queue)
+        store = QuoteStore(db_path=settings.db_path)
+        client = BinanceWSClient(settings, store)
         assert "btcusdt@bookTicker" in client._url
         assert "ethusdt@bookTicker" in client._url
         assert "/stream?streams=" in client._url
