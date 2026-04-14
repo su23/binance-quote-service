@@ -1,5 +1,7 @@
 # Binance Quote Service
 
+[![CI](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml/badge.svg)](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml)
+
 Real-time streaming quote service for the top 10 Binance instruments by market capitalization.
 
 Connects to Binance WebSocket APIs (USD-M Futures where available, Spot for the rest), streams best bid/ask (bookTicker) data, persists quotes to SQLite, and serves the latest quotes via a REST API.
