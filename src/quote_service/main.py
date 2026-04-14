@@ -46,7 +46,13 @@ async def run(settings: Settings | None = None) -> None:
             )
         except Exception as exc:
             logger.warning(
-                "Failed to fetch top instruments (%s), using fallback list", exc
+                "=== AUTO-DISCOVERY FAILED === "
+                "Could not fetch top instruments from Binance (%s: %s). "
+                "This may be caused by rate-limiting or network issues. "
+                "Falling back to hardcoded symbol list. "
+                "Set QS_SYMBOLS to override.",
+                type(exc).__name__,
+                exc,
             )
             settings.symbols = FALLBACK_SYMBOLS[: settings.num_instruments]
 

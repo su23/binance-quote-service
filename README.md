@@ -56,6 +56,11 @@ pip install -e ".[dev]"
 
 ```bash
 docker build -t quote-service .
+
+# Run with persistent storage (quotes survive container restarts)
+docker run -p 8000:8000 -v $(pwd)/data:/data quote-service
+
+# Or without persistence (data lost on container stop)
 docker run -p 8000:8000 quote-service
 ```
 
@@ -125,7 +130,16 @@ pytest tests/test_store.py -v
 
 # Run with coverage
 pytest --cov=quote_service -v
+
+# Run latency benchmarks
+pytest tests/test_benchmark.py -v
 ```
+
+CI runs automatically on push/PR to `main` via GitHub Actions (see `.github/workflows/ci.yml`), testing Python 3.11–3.13 with a 90% coverage gate.
+
+## Limitations
+
+- **SQLite is single-node only.** The WAL-mode SQLite database supports concurrent reads from the API while the flush loop writes, but it does not support multi-process or distributed deployments. For horizontal scaling, swap to PostgreSQL or another networked database.
 
 ## Project Structure
 
