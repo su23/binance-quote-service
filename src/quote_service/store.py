@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Sequence
 
@@ -42,7 +41,6 @@ class QuoteStore:
         self._batch_size = batch_size
         self._latest: dict[str, Quote] = {}
         self._buffer: list[Quote] = []
-        self._lock = asyncio.Lock()
         self._db: aiosqlite.Connection | None = None
 
     async def init_db(self) -> None:
@@ -59,13 +57,20 @@ class QuoteStore:
         self._buffer.append(quote)
 
     async def flush(self) -> int:
-        """Flush buffered quotes to SQLite. Returns number of rows written."""
+        """Flush buffered quotes to SQLite. Returns number of rows written.
+
+        Safe without a lock: update() is synchronous (no await), so the
+        reference swap below executes atomically within the event loop —
+        no coroutine can interleave between the two assignments.
+        """
         if not self._buffer:
             return 0
 
-        async with self._lock:
-            to_write = self._buffer
-            self._buffer = []
+        # Atomic swap: grab current buffer, replace with empty list.
+        # update() appends to self._buffer, so any calls during the
+        # await below will write to the new list, not to_write.
+        to_write = self._buffer
+        self._buffer = []
 
         rows = [
             (q.symbol, q.bid_price, q.bid_size, q.ask_price, q.ask_size, q.event_time)
