@@ -6,102 +6,86 @@ import pytest
 from quote_service.instruments import fetch_top_instruments
 
 
-def _fake_exchange_info() -> dict:
-    """Minimal exchangeInfo with base/quote asset metadata."""
-    symbols = [
-        ("BTCUSDT",  "BTC",  "USDT"),
-        ("ETHUSDT",  "ETH",  "USDT"),
-        ("BNBUSDT",  "BNB",  "USDT"),
-        ("SOLUSDT",  "SOL",  "USDT"),
-        ("XRPUSDT",  "XRP",  "USDT"),
-        ("DOGEUSDT", "DOGE", "USDT"),
-        ("BTCIDR",   "BTC",  "IDR"),
-        ("ETHBTC",   "ETH",  "BTC"),
-        ("USDTIDR",  "USDT", "IDR"),   # used to derive IDR→USD rate
-        ("BTCJPY",   "BTC",  "JPY"),   # no JPY rate available → skipped
+def _fake_market_data() -> dict:
+    """Fake Binance complianceSymbolList response."""
+    items = [
+        ("BTCUSDT",  "BTC",  1_490_000_000_000),
+        ("ETHUSDT",  "ETH",    286_000_000_000),
+        ("XRPUSDT",  "XRP",     84_100_000_000),
+        ("BNBUSDT",  "BNB",     84_000_000_000),
+        ("SOLUSDT",  "SOL",     49_400_000_000),
+        ("TRXUSDT",  "TRX",     32_100_000_000),
+        ("DOGEUSDT", "DOGE",    14_500_000_000),
+        ("ADAUSDT",  "ADA",      8_790_000_000),
+        ("XLMUSDT",  "XLM",      7_850_000_000),
+        ("LINKUSDT", "LINK",     6_200_000_000),
+        ("AVAXUSDT", "AVAX",     5_100_000_000),
+        ("DOTUSDT",  "DOT",      4_800_000_000),
+        # Stablecoins — should be excluded
+        ("USDTUSD",  "USDT",  185_000_000_000),
+        ("USDCUSDT", "USDC",   78_700_000_000),
+        ("USDSUSDT", "USDS",   11_300_000_000),
+        # Wrapped assets — should be excluded
+        ("WBTCUSDT", "WBTC",    8_870_000_000),
+        ("WBETHUSDT","WBETH",   8_750_000_000),
+        # Duplicate base (BTC in different quote) — should be deduped
+        ("BTCEUR",   "BTC",  1_400_000_000_000),
     ]
     return {
-        "symbols": [
-            {"symbol": sym, "baseAsset": base, "quoteAsset": quote, "status": "TRADING"}
-            for sym, base, quote in symbols
-        ]
+        "code": "000000",
+        "data": [
+            {
+                "symbol": sym,
+                "baseAsset": base,
+                "marketCap": str(mcap),
+            }
+            for sym, base, mcap in items
+        ],
     }
-
-
-def _fake_tickers() -> list[dict]:
-    """Fake 24hr ticker data with realistic numbers."""
-    return [
-        {"symbol": "BTCUSDT",  "quoteVolume": "50000000000",      "lastPrice": "67000"},
-        {"symbol": "ETHUSDT",  "quoteVolume": "20000000000",      "lastPrice": "3500"},
-        {"symbol": "BNBUSDT",  "quoteVolume": "5000000000",       "lastPrice": "600"},
-        {"symbol": "SOLUSDT",  "quoteVolume": "4000000000",       "lastPrice": "150"},
-        {"symbol": "XRPUSDT",  "quoteVolume": "3500000000",       "lastPrice": "0.55"},
-        {"symbol": "DOGEUSDT", "quoteVolume": "2000000000",       "lastPrice": "0.15"},
-        # BTCIDR: moderate IDR volume (1 USD ≈ 15700 IDR)
-        {"symbol": "BTCIDR",   "quoteVolume": "500000000000000",  "lastPrice": "1052900000"},
-        # ETHBTC: small volume in BTC terms
-        {"symbol": "ETHBTC",   "quoteVolume": "5000",             "lastPrice": "0.0522"},
-        # FX pair for rate derivation
-        {"symbol": "USDTIDR",  "quoteVolume": "100000000",        "lastPrice": "15700"},
-    ]
-
-
-def _setup_mocks(httpx_mock):
-    """Register both ticker and exchangeInfo responses."""
-    httpx_mock.add_response(json=_fake_tickers())
-    httpx_mock.add_response(json=_fake_exchange_info())
 
 
 class TestFetchTopInstruments:
     @pytest.mark.asyncio
-    async def test_returns_top_n(self, httpx_mock):
-        _setup_mocks(httpx_mock)
-        result = await fetch_top_instruments(n=6, base_url="https://fake.api")
-        assert len(result) == 6
-        # BTCUSDT should be at or near the top
-        assert "BTCUSDT" in result[:2]
-        assert "ETHUSDT" in result[:3]
+    async def test_returns_top_10(self, httpx_mock):
+        httpx_mock.add_response(json=_fake_market_data())
+        result = await fetch_top_instruments(n=10, base_url="https://fake.api")
+        assert len(result) == 10
+        assert result[0] == "BTCUSDT"
+        assert result[1] == "ETHUSDT"
+        assert result[2] == "XRPUSDT"
 
     @pytest.mark.asyncio
-    async def test_fiat_pairs_normalised(self, httpx_mock):
-        """BTCIDR should not outrank all USDT pairs after USD normalisation."""
-        _setup_mocks(httpx_mock)
-        result = await fetch_top_instruments(n=10, base_url="https://fake.api")
-        # BTCIDR should be roughly in the same tier as BTCUSDT (both are BTC),
-        # not at the very top dominating everything
-        assert result[0] in ("BTCUSDT", "BTCIDR")
-        # ETHUSDT should still rank above low-cap coins
-        eth_idx = result.index("ETHUSDT")
-        doge_idx = result.index("DOGEUSDT")
-        assert eth_idx < doge_idx
+    async def test_excludes_stablecoins(self, httpx_mock):
+        httpx_mock.add_response(json=_fake_market_data())
+        result = await fetch_top_instruments(n=20, base_url="https://fake.api")
+        assert "USDTUSD" not in result
+        assert "USDCUSDT" not in result
+        assert "USDSUSDT" not in result
+
+    @pytest.mark.asyncio
+    async def test_excludes_wrapped_assets(self, httpx_mock):
+        httpx_mock.add_response(json=_fake_market_data())
+        result = await fetch_top_instruments(n=20, base_url="https://fake.api")
+        assert "WBTCUSDT" not in result
+        assert "WBETHUSDT" not in result
 
     @pytest.mark.asyncio
     async def test_deduplicates_by_base_asset(self, httpx_mock):
-        """Only one pair per base asset — highest-scoring wins."""
-        _setup_mocks(httpx_mock)
-        result = await fetch_top_instruments(n=10, base_url="https://fake.api")
-        # ETHUSDT should be present (higher score than ETHBTC)
-        assert "ETHUSDT" in result
-        # ETHBTC should be deduplicated out (same base asset: ETH)
-        assert "ETHBTC" not in result
-
-    @pytest.mark.asyncio
-    async def test_missing_fx_rate_skipped(self, httpx_mock):
-        """Pairs with unknown quote asset FX rate are excluded."""
-        _setup_mocks(httpx_mock)
+        httpx_mock.add_response(json=_fake_market_data())
         result = await fetch_top_instruments(n=20, base_url="https://fake.api")
-        # BTCJPY has no JPY rate source → should not appear
-        assert "BTCJPY" not in result
+        # BTCUSDT wins over BTCEUR (higher marketCap)
+        assert "BTCUSDT" in result
+        assert "BTCEUR" not in result
 
     @pytest.mark.asyncio
     async def test_returns_fewer_if_requested(self, httpx_mock):
-        _setup_mocks(httpx_mock)
+        httpx_mock.add_response(json=_fake_market_data())
         result = await fetch_top_instruments(n=3, base_url="https://fake.api")
         assert len(result) == 3
+        assert result == ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
 
     @pytest.mark.asyncio
     async def test_http_error_raises(self, httpx_mock):
-        httpx_mock.add_response(status_code=500)
         httpx_mock.add_response(status_code=500)
         with pytest.raises(httpx.HTTPStatusError):
             await fetch_top_instruments(base_url="https://fake.api")

@@ -38,7 +38,7 @@ async def run(settings: Settings | None = None) -> None:
     if not settings.symbols:
         try:
             settings.symbols = await fetch_top_instruments(
-                n=settings.num_instruments, base_url=settings.rest_url
+                n=settings.num_instruments,
             )
         except Exception as exc:
             logger.warning(
