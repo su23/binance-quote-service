@@ -52,22 +52,16 @@ class TestFetchTopInstruments:
         assert len(result) == 10
         assert result[0] == "BTCUSDT"
         assert result[1] == "ETHUSDT"
-        assert result[2] == "XRPUSDT"
+        assert result[2] == "USDTUSD"  # #3 by market cap
 
     @pytest.mark.asyncio
-    async def test_excludes_stablecoins(self, httpx_mock):
+    async def test_includes_all_asset_types(self, httpx_mock):
+        """Stablecoins and wrapped assets are legitimate instruments."""
         httpx_mock.add_response(json=_fake_market_data())
         result = await fetch_top_instruments(n=20, base_url="https://fake.api")
-        assert "USDTUSD" not in result
-        assert "USDCUSDT" not in result
-        assert "USDSUSDT" not in result
-
-    @pytest.mark.asyncio
-    async def test_excludes_wrapped_assets(self, httpx_mock):
-        httpx_mock.add_response(json=_fake_market_data())
-        result = await fetch_top_instruments(n=20, base_url="https://fake.api")
-        assert "WBTCUSDT" not in result
-        assert "WBETHUSDT" not in result
+        assert "USDTUSD" in result
+        assert "USDCUSDT" in result
+        assert "WBTCUSDT" in result
 
     @pytest.mark.asyncio
     async def test_deduplicates_by_base_asset(self, httpx_mock):
@@ -82,7 +76,7 @@ class TestFetchTopInstruments:
         httpx_mock.add_response(json=_fake_market_data())
         result = await fetch_top_instruments(n=3, base_url="https://fake.api")
         assert len(result) == 3
-        assert result == ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
+        assert result == ["BTCUSDT", "ETHUSDT", "USDTUSD"]
 
     @pytest.mark.asyncio
     async def test_http_error_raises(self, httpx_mock):

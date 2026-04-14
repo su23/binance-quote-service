@@ -12,14 +12,6 @@ BINANCE_MARKET_CAP_URL = (
     "https://www.binance.com/bapi/apex/v1/friendly/apex/marketing/complianceSymbolList"
 )
 
-# Stablecoins and wrapped assets to exclude from ranking.
-_EXCLUDED_BASES = frozenset({
-    "USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD", "USD",
-    "U", "USD1", "RLUSD", "USDP", "GUSD", "FRAX", "USDS",
-    "WBTC", "WBETH",
-})
-
-
 async def fetch_top_instruments(
     n: int = 10,
     base_url: str = BINANCE_MARKET_CAP_URL,
@@ -28,8 +20,7 @@ async def fetch_top_instruments(
 
     Uses Binance's internal market data API which provides actual market
     cap (circulating supply * price) for each listed asset.  Results are
-    filtered to exclude stablecoins and wrapped assets, then deduplicated
-    by base asset.
+    deduplicated by base asset.
 
     Returns uppercase symbol strings like ``["BTCUSDT", "ETHUSDT", ...]``.
     """
@@ -47,8 +38,6 @@ async def fetch_top_instruments(
         base = item.get("baseAsset", "")
         market_cap = float(item.get("marketCap", 0))
         if not symbol or market_cap <= 0:
-            continue
-        if base in _EXCLUDED_BASES:
             continue
         scored.append((symbol, base, market_cap))
 
