@@ -7,9 +7,6 @@ from fastapi import FastAPI, HTTPException, Query
 from .models import Quote, QuoteResponse
 from .store import QuoteStore
 
-_start_time = time.monotonic()
-
-
 def _quote_to_dict(q: Quote) -> dict:
     return {
         "symbol": q.symbol,
@@ -23,6 +20,7 @@ def _quote_to_dict(q: Quote) -> dict:
 
 def create_app(store: QuoteStore) -> FastAPI:
     app = FastAPI(title="Binance Quote Service")
+    start_time = time.monotonic()
 
     @app.get("/quotes", response_model=list[QuoteResponse])
     async def get_all_quotes() -> list[dict]:
@@ -50,7 +48,7 @@ def create_app(store: QuoteStore) -> FastAPI:
         return {
             "status": "ok",
             "symbols_active": len(store.get_all_latest()),
-            "uptime_seconds": round(time.monotonic() - _start_time, 1),
+            "uptime_seconds": round(time.monotonic() - start_time, 1),
         }
 
     return app
