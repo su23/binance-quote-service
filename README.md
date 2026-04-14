@@ -1,6 +1,6 @@
 # Binance Quote Service
 
-[![CI](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml/badge.svg)](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml)
+[![CI](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/su23/binance-quote-service/actions/workflows/ci.yml)
 
 Real-time streaming quote service for the top 10 Binance instruments by market capitalization.
 
