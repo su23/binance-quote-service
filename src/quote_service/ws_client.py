@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+
+import websockets
+import websockets.asyncio.client
+
+from .config import Settings
+from .models import Quote, parse_book_ticker
+
+logger = logging.getLogger(__name__)
+
+MAX_RECONNECT_DELAY = 30.0
+
+
+class BinanceWSClient:
+    """Connects to Binance combined bookTicker stream and pushes Quotes to a queue."""
+
+    def __init__(self, settings: Settings, queue: asyncio.Queue[Quote]) -> None:
+        self._settings = settings
+        self._queue = queue
+        self._running = False
+        streams = "/".join(
+            f"{s.lower()}@bookTicker" for s in settings.symbols
+        )
+        self._url = f"{settings.ws_url}/stream?streams={streams}"
+
+    async def run(self) -> None:
+        """Run the WebSocket listener with auto-reconnect."""
+        self._running = True
+        delay = 1.0
+        while self._running:
+            try:
+                await self._connect_and_listen()
+                delay = 1.0  # reset on clean disconnect
+            except (
+                websockets.exceptions.ConnectionClosed,
+                websockets.exceptions.WebSocketException,
+                OSError,
+            ) as exc:
+                if not self._running:
+                    break
+                logger.warning(
+                    "WebSocket disconnected: %s. Reconnecting in %.1fs…",
+                    exc,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, MAX_RECONNECT_DELAY)
+
+    async def _connect_and_listen(self) -> None:
+        logger.info("Connecting to %s", self._url)
+        async with websockets.asyncio.client.connect(
+            self._url,
+            ping_interval=20,
+            ping_timeout=60,
+            close_timeout=5,
+        ) as ws:
+            logger.info("Connected. Streaming bookTicker for %d symbols.", len(self._settings.symbols))
+            delay_reset = True
+            async for raw in ws:
+                msg = json.loads(raw)
+                data = msg.get("data")
+                if data is None:
+                    continue
+                try:
+                    quote = parse_book_ticker(data)
+                except (KeyError, ValueError) as exc:
+                    logger.debug("Skipping malformed message: %s", exc)
+                    continue
+                self._queue.put_nowait(quote)
+
+    def stop(self) -> None:
+        self._running = False
