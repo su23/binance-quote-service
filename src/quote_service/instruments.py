@@ -17,7 +17,6 @@ TICKER_24H = "/fapi/v1/ticker/24hr"
 async def fetch_top_instruments(
     n: int = 10,
     base_url: str = FUTURES_BASE,
-    quote_asset: str = "USDT",
 ) -> list[str]:
     """Fetch top N perpetual futures instruments by 24h quote volume.
 
@@ -32,12 +31,8 @@ async def fetch_top_instruments(
         resp.raise_for_status()
         tickers = resp.json()
 
-    # Filter to USDT-margined pairs and sort by quoteVolume descending
-    usdt_tickers = [
-        t for t in tickers if t["symbol"].endswith(quote_asset)
-    ]
-    usdt_tickers.sort(key=lambda t: float(t["quoteVolume"]), reverse=True)
+    tickers.sort(key=lambda t: float(t["quoteVolume"]), reverse=True)
 
-    top = [t["symbol"] for t in usdt_tickers[:n]]
+    top = [t["symbol"] for t in tickers[:n]]
     logger.info("Top %d instruments by volume: %s", n, ", ".join(top))
     return top

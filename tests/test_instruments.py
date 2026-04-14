@@ -45,24 +45,23 @@ class TestFetchTopInstruments:
         httpx_mock.add_response(json=_fake_ticker_response())
         result = await fetch_top_instruments(n=10, base_url="https://fake.api")
         assert len(result) == 10
+        # Sorted by quoteVolume, no filtering by quote asset
         assert result[0] == "BTCUSDT"
-        assert result[1] == "ETHUSDT"
-        # Non-USDT pairs should be excluded
-        assert "BTCBUSD" not in result
-        assert "ETHBTC" not in result
+        assert result[1] == "BTCBUSD"  # 2nd highest volume
+        assert result[2] == "ETHUSDT"
 
     @pytest.mark.asyncio
     async def test_returns_fewer_if_requested(self, httpx_mock):
         httpx_mock.add_response(json=_fake_ticker_response())
         result = await fetch_top_instruments(n=3, base_url="https://fake.api")
         assert len(result) == 3
-        assert result == ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+        assert result == ["BTCUSDT", "BTCBUSD", "ETHUSDT"]
 
     @pytest.mark.asyncio
     async def test_sorted_by_volume(self, httpx_mock):
         httpx_mock.add_response(json=_fake_ticker_response())
         result = await fetch_top_instruments(n=5, base_url="https://fake.api")
-        assert result == ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
+        assert result == ["BTCUSDT", "BTCBUSD", "ETHUSDT", "ETHBTC", "BNBUSDT"]
 
     @pytest.mark.asyncio
     async def test_http_error_raises(self, httpx_mock):
