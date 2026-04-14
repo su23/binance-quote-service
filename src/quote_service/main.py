@@ -15,10 +15,13 @@ from .ws_client import BinanceWSClient
 logger = logging.getLogger(__name__)
 
 
-async def flush_loop(store: QuoteStore, interval_s: float) -> None:
-    """Periodically flush buffered quotes to SQLite."""
-    while True:
-        await asyncio.sleep(interval_s)
+async def flush_loop(store: QuoteStore, interval_s: float, stop_event: asyncio.Event) -> None:
+    """Periodically flush buffered quotes to SQLite until stop_event is set."""
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+        except asyncio.TimeoutError:
+            pass
         n = await store.flush()
         if n:
             logger.debug("Flushed %d quotes to DB", n)
@@ -67,16 +70,15 @@ async def run(settings: Settings | None = None) -> None:
     server.install_signal_handlers = lambda: None
 
     loop = asyncio.get_running_loop()
-    shutdown_called = False
+    stop_event = asyncio.Event()
 
     def _shutdown() -> None:
-        nonlocal shutdown_called
-        if shutdown_called:
+        if stop_event.is_set():
             return
-        shutdown_called = True
         logger.info("Shutdown signal received")
         ws_client.stop()
         server.should_exit = True
+        stop_event.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _shutdown)
@@ -86,7 +88,7 @@ async def run(settings: Settings | None = None) -> None:
     try:
         async with asyncio.TaskGroup() as tg:
             tg.create_task(ws_client.run())
-            tg.create_task(flush_loop(store, batch_interval_s))
+            tg.create_task(flush_loop(store, batch_interval_s, stop_event))
             tg.create_task(server.serve())
     except* (KeyboardInterrupt, SystemExit):
         pass

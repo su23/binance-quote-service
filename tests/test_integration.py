@@ -64,9 +64,10 @@ class TestEndToEnd:
             ws_client = BinanceWSClient(settings, store)
             app = create_app(store)
 
+            stop_event = asyncio.Event()
             ws_task = asyncio.create_task(ws_client.run())
             flush_task = asyncio.create_task(
-                flush_loop(store, settings.batch_interval_ms / 1000.0)
+                flush_loop(store, settings.batch_interval_ms / 1000.0, stop_event)
             )
 
             try:
@@ -110,14 +111,11 @@ class TestEndToEnd:
                 assert len(history) >= 2  # At least the two BTCUSDT quotes
             finally:
                 ws_client.stop()
+                stop_event.set()
                 ws_task.cancel()
-                flush_task.cancel()
                 try:
                     await ws_task
                 except asyncio.CancelledError:
                     pass
-                try:
-                    await flush_task
-                except asyncio.CancelledError:
-                    pass
+                await flush_task
                 await store.close()
