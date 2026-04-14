@@ -76,17 +76,14 @@ class TestFetchTopInstruments:
         assert eth_idx < doge_idx
 
     @pytest.mark.asyncio
-    async def test_crypto_quote_normalised(self, httpx_mock):
-        """ETHBTC volume should be normalised via BTC→USD rate."""
+    async def test_deduplicates_by_base_asset(self, httpx_mock):
+        """Only one pair per base asset — highest-scoring wins."""
         _setup_mocks(httpx_mock)
         result = await fetch_top_instruments(n=10, base_url="https://fake.api")
-        # ETHBTC has 5000 BTC volume × $67k = $335M USD volume, which is
-        # significant after normalisation — it should appear in results
-        assert "ETHBTC" in result
-        # But should rank below the major USDT pairs
-        eth_btc_idx = result.index("ETHBTC")
-        assert eth_btc_idx > result.index("BTCUSDT")
-        assert eth_btc_idx > result.index("ETHUSDT")
+        # ETHUSDT should be present (higher score than ETHBTC)
+        assert "ETHUSDT" in result
+        # ETHBTC should be deduplicated out (same base asset: ETH)
+        assert "ETHBTC" not in result
 
     @pytest.mark.asyncio
     async def test_missing_fx_rate_skipped(self, httpx_mock):

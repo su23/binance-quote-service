@@ -19,7 +19,10 @@ SPOT_TICKER_24H = "/api/v3/ticker/24hr"
 EXCHANGE_INFO = "/api/v3/exchangeInfo"
 
 # Stablecoins pegged ~1:1 to USD — no FX lookup needed.
-_USD_STABLECOINS = frozenset({"USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD", "USD"})
+_USD_STABLECOINS = frozenset({
+    "USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD", "USD",
+    "U", "USD1", "RLUSD", "USDP", "GUSD", "FRAX",
+})
 
 
 def _build_usd_rates(
@@ -75,11 +78,8 @@ async def fetch_top_instruments(
     """Fetch top N spot instruments ranked by estimated market cap.
 
     All pairs are normalised to USD using FX rates derived from Binance's
-    own trading pairs.  The score for each instrument is::
-
-        score = quoteVolume_USD * lastPrice_USD
-
-    where ``_USD`` means the value converted to US dollars.
+    own trading pairs.  The score is the 24h quote volume in USD terms.
+    Results are deduplicated by base asset (one pair per underlying).
 
     Returns uppercase symbol strings like ``["BTCUSDT", "ETHUSDT", ...]``.
     """
@@ -103,7 +103,10 @@ async def fetch_top_instruments(
         sym = t["symbol"]
         if sym not in symbol_info:
             continue
-        _base, quote = symbol_info[sym]
+        base, quote = symbol_info[sym]
+        # Skip stablecoin-to-stablecoin pairs (e.g. USDCUSDT, FDUSDUSDT).
+        if base in _USD_STABLECOINS:
+            continue
         usd_per_quote = rates.get(quote)
         if usd_per_quote is None:
             continue
@@ -112,11 +115,23 @@ async def fetch_top_instruments(
             last_price = float(t["lastPrice"])
         except (KeyError, ValueError):
             continue
-        # Normalise both factors to USD.
-        score = (quote_volume * usd_per_quote) * (last_price * usd_per_quote)
+        # Normalise quoteVolume to USD.
+        score = quote_volume * usd_per_quote
         scored.append((sym, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Deduplicate by base asset — keep only the highest-scoring pair per
+    # underlying (e.g. BTCUSDT wins over BTCU, BTCFDUSD, BTCEUR, …).
+    seen_bases: set[str] = set()
+    deduped: list[tuple[str, float]] = []
+    for sym, score in scored:
+        base, _quote = symbol_info[sym]
+        if base in seen_bases:
+            continue
+        seen_bases.add(base)
+        deduped.append((sym, score))
+    scored = deduped
 
     display = max(n, 20)
     logger.info("Top %d instruments by estimated market cap (selecting %d):", display, n)
