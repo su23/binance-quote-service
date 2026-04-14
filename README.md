@@ -7,23 +7,36 @@ Connects to Binance USD-M Futures WebSocket API, streams best bid/ask (bookTicke
 ## Architecture
 
 ```
-Binance USD-M Futures        websockets         asyncio.Queue
-  wss://fstream.binance.com ──────────> WS Client ──────────> Quote Processor
+Binance USD-M Futures        websockets            orjson.loads
+  wss://fstream.binance.com ──────────> WS Client ──────────> store.update()
   (bookTicker x 10 symbols)                                       │
                                                        ┌──────────┴──────────┐
                                                        ▼                     ▼
                                                  In-Memory Dict         SQLite (WAL)
-                                                 (latest quotes)        (all quotes)
+                                                 (latest quotes)     (periodic flush)
                                                        │
                                                        ▼
                                                  FastAPI REST API
 ```
 
-- **WebSocket client** connects to Binance combined bookTicker stream with auto-reconnect
+- **WebSocket client** connects to Binance combined bookTicker stream with auto-reconnect and exponential backoff
 - **In-memory dict** stores the latest quote per symbol for O(1) reads
 - **SQLite (WAL mode)** persists all quotes with batched writes for I/O efficiency
 - **FastAPI** serves the REST API with auto-generated OpenAPI docs
-- At startup, the top 10 instruments are **automatically discovered** from Binance by 24h trading volume (proxy for market cap)
+- At startup, the top 10 instruments are **automatically discovered** from Binance by 24h trading volume
+
+### Performance
+
+The hot path (WS message arrival to quote availability) is fully synchronous with zero async context switches:
+
+```
+WS recv → orjson.loads → parse_book_ticker (4x float()) → dict[symbol] = quote
+```
+
+- **orjson** for JSON parsing (~3-5x faster than stdlib `json`)
+- **No queue, no lock** — WS client updates the store directly via a synchronous `update()` call
+- **No intermediate allocations** — buffer swap in `flush()` is a single atomic expression
+- DB writes happen in a **background periodic flush**, completely off the hot path
 
 ## Prerequisites
 
@@ -69,8 +82,7 @@ The REST API starts on `http://0.0.0.0:8000` by default.
   "bid_size": 1.234,
   "ask_price": 67433.00,
   "ask_size": 0.567,
-  "event_time_ms": 1700000000000,
-  "receive_latency_us": 0.0
+  "event_time_ms": 1700000000000
 }
 ```
 
@@ -107,7 +119,7 @@ pytest --cov=quote_service -v
 
 ```
 src/quote_service/
-├── main.py          # Entry point: starts WS client, processor, API server
+├── main.py          # Entry point: starts WS client, flush loop, API server
 ├── config.py        # Settings via pydantic-settings (env vars)
 ├── instruments.py   # Auto-discovers top instruments from Binance REST API
 ├── ws_client.py     # Binance WebSocket client with auto-reconnect
